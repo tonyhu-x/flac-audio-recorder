@@ -1,0 +1,1 @@
+// Just a dummy file for TypeScript to find the declaration file

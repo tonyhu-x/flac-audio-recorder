@@ -4,11 +4,10 @@ import tseslint from 'typescript-eslint';
 import stylistic from '@stylistic/eslint-plugin';
 
 export default [
-  { languageOptions: { globals: globals.browser } },
   {
-    files: ['*.config.js'],
-    languageOptions: { globals: globals.node },
+    ignores: ['src/libflacjs', 'dist'],
   },
+  { languageOptions: { globals: globals.browser } },
   {
     plugins: {
       '@stylistic': stylistic,

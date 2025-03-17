@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Test</title>
+    <script src="../dist/index.bundle.js"></script>
+    <script type="module">
+      const x = new flacAudioRecorder.FlacAudioRecorder();
+      await x.record();
+
+      setTimeout(async () => {
+        await x.stop();
+      }, 3000);
+      console.log('Script finished');
+    </script>
+  </head>
+</html>

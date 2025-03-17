@@ -1,5 +1,9 @@
-import * as Flac from 'libflacjs/dist/libflac.wasm.js';
-import { Encoder } from 'libflacjs/lib/encoder.js';
+// TODO: change this
+// import * as Flac from './libflacjs/dist/libflac.dev.wasm.js';
+// importing from the lib folder causes problems with webpack
+import { Encoder } from './encoder.js';
+import * as Flac from './libflacjs/dist/libflac.dev.js';
+import { InitMessagePayload } from './types.js';
 
 /**
  * Type and global variable declarations for AudioWorkletGlobalScope
@@ -51,12 +55,56 @@ declare function registerProcessor(
 const COMPRESSION = 5;
 const SAMPLE_SIZE = 16;
 
+let counter = 0;
+
 class MyProcessor extends AudioWorkletProcessor {
-  encoder: Encoder | null = null;
-  blockBuffers: Float32Array[][] = [];
+  private encoder?: Encoder;
+  private blockBuffers: Float32Array[][] = [];
+  private initMessagePayload?: InitMessagePayload;
 
   constructor(args?: AudioWorkletNodeOptions) {
     super(args);
+
+    this.port.onmessage = (event) => {
+      console.log('Message received');
+      console.log(`Message type is ${event.data.cmd}`);
+
+      switch (event.data.cmd) {
+        case 'init': {
+          this.initMessagePayload = event.data.initMessagePayload as InitMessagePayload;
+          console.log(`Will create encoder with:`);
+          console.log(`- Sample rate: ${this.initMessagePayload.sampleRate}`);
+          console.log(`- Number of channels: ${this.initMessagePayload.channelCount}`);
+          Flac.on('ready', () => {
+            console.log('Flac is ready');
+            this.encoder = new Encoder(
+              Flac,
+              {
+                sampleRate: this.initMessagePayload!.sampleRate,
+                channels: this.initMessagePayload!.channelCount,
+                compression: COMPRESSION,
+                bitsPerSample: SAMPLE_SIZE,
+                verify: true,
+              },
+            );
+            console.log('Encoder has been initailized');
+          });
+          break;
+        }
+        case 'finish': {
+          if (!this.encoder) {
+            throw new Error('Encoder not initialized with "init" message, or nothing to finish');
+          }
+          console.log(`Total samples is ${this.encoder.metadata?.total_samples}`);
+          console.log(`Counter is ${counter}`);
+          this.port.postMessage(this.encoder.getSamples());
+          break;
+        }
+        default:
+          throw new Error('Unknown or undefined message type');
+      }
+    };
+
     console.log('MyProcessor created');
   }
 
@@ -65,36 +113,25 @@ class MyProcessor extends AudioWorkletProcessor {
     outputs: Float32Array[][],
     parameters: Record<string, Float32Array>,
   ): boolean {
-    if (!this.encoder) {
-      if (!Flac.isReady()) {
-        this.blockBuffers.push(inputs[0]);
-        return false;
+    counter++;
+    if (!Flac.isReady() || !this.encoder) {
+      this.blockBuffers.push(inputs[0]);
+      // return false as per https://developer.mozilla.org/en-US/docs/Web/API/AudioWorkletProcessor/process
+      return true;
+    }
+
+    if (this.blockBuffers.length > 0) {
+      console.log('Processing buffered inputs. This should only be printed once');
+      // process the buffered inputs
+      for (const block of this.blockBuffers) {
+        this.doEncode(block);
       }
-      else {
-        // create the encoder
-        console.log(`Creating encoder...`);
-        console.log(`Sample rate: ${inputs[0].length}`);
-        console.log(`Number of channels: ${inputs[0].length}`);
-        this.encoder = new Encoder(
-          Flac,
-          {
-            sampleRate,
-            channels: inputs[0].length,
-            compression: COMPRESSION,
-            bitsPerSample: SAMPLE_SIZE,
-            verify: true,
-          },
-        );
-        // process the buffered inputs
-        for (const block of this.blockBuffers) {
-          this.doEncode(block);
-        }
-      }
+      this.blockBuffers = [];
     }
 
     this.doEncode(inputs[0]);
     // return false as per https://developer.mozilla.org/en-US/docs/Web/API/AudioWorkletProcessor/process
-    return false;
+    return true;
   }
 
   /**
@@ -106,13 +143,13 @@ class MyProcessor extends AudioWorkletProcessor {
       const bufferI32 = new Int32Array(channel.length);
       const view = new DataView(bufferI32.buffer);
       for (let i = 0; i < channel.length; i++) {
-        // convert to 16-bit signed integer
+        // convert to SAMPLE_SIZE signed integer
         view.setInt32(i * 4, channel[i] * (2 ** (SAMPLE_SIZE - 1)) - 1, true);
       }
       channelsI32.push(bufferI32);
     }
     if (!this.encoder?.encode(channelsI32)) {
-      console.error('Encoding failed');
+      throw new Error('Encoding failed');
     }
   }
 }
