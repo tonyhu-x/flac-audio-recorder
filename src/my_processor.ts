@@ -55,12 +55,11 @@ declare function registerProcessor(
 const COMPRESSION = 5;
 const SAMPLE_SIZE = 16;
 
-let counter = 0;
-
 class MyProcessor extends AudioWorkletProcessor {
   private encoder?: Encoder;
   private blockBuffers: Float32Array[][] = [];
   private initMessagePayload?: InitMessagePayload;
+  private finished = false;
 
   constructor(args?: AudioWorkletNodeOptions) {
     super(args);
@@ -92,11 +91,10 @@ class MyProcessor extends AudioWorkletProcessor {
           break;
         }
         case 'finish': {
+          this.finished = true;
           if (!this.encoder) {
             throw new Error('Encoder not initialized with "init" message, or nothing to finish');
           }
-          console.log(`Total samples is ${this.encoder.metadata?.total_samples}`);
-          console.log(`Counter is ${counter}`);
           this.port.postMessage(this.encoder.getSamples());
           break;
         }
@@ -113,7 +111,10 @@ class MyProcessor extends AudioWorkletProcessor {
     outputs: Float32Array[][],
     parameters: Record<string, Float32Array>,
   ): boolean {
-    counter++;
+    if (this.finished) {
+      return false;
+    }
+
     if (!Flac.isReady() || !this.encoder) {
       this.blockBuffers.push(inputs[0]);
       // return false as per https://developer.mozilla.org/en-US/docs/Web/API/AudioWorkletProcessor/process
