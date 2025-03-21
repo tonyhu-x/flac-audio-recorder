@@ -8,9 +8,16 @@
       await x.record();
 
       setTimeout(async () => {
-        await x.stop();
+        const blob = await x.stop();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'recording.flac';
+        // we need to append the element to the DOM, otherwise it will not work in firefox
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
       }, 3000);
-      console.log('Script finished');
     </script>
   </head>
 </html>

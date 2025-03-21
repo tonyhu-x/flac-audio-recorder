@@ -62,27 +62,30 @@ class FlacAudioRecorder {
     };
 
     this.myProcessorNode.port.postMessage({ cmd: 'init', initMessagePayload });
-    this.myProcessorNode.port.onmessage = (event) => {
-      const blob = new Blob([event.data], { type: 'audio/flac' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'recording.flac';
-      // we need to append the element to the DOM, otherwise it will not work in firefox
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    };
 
     this.source.connect(this.myProcessorNode);
   }
 
-  stop() {
+  async stop(): Promise<Blob> {
     console.log('Stopping recording');
+
     this.stream?.getAudioTracks()[0].stop();
+
+    const promise: Promise<Blob> = new Promise((resolve) => {
+      if (this.myProcessorNode === undefined) {
+        throw new Error('myProcessorNode is undefined');
+      }
+      this.myProcessorNode.port.onmessage = (event) => {
+        const blob = new Blob([event.data], { type: 'audio/flac' });
+        resolve(blob);
+      };
+    });
+
     this.myProcessorNode?.port.postMessage({ cmd: 'finish' });
     this.myProcessorNode?.disconnect();
     this.source?.disconnect();
+
+    return promise;
   }
 }
 
